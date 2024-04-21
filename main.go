@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/csv"
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
@@ -51,6 +52,7 @@ type WalkCommand struct {
 	OIDs      []string `arg:"-t,--target,separate,required" help:"OID to walk (multiple supported)"`
 	Verbose   bool     `arg:"-v,--verbose" help:"Verbose output"`
 	Json      bool     `arg:"-j,--json" help:"Output in JSON"`
+	CSV       bool     `arg:"-C,--csv" help:"Output in CSV"`
 }
 
 type ssagasuOpts struct {
@@ -198,11 +200,27 @@ func walk(opts *WalkCommand) error {
 		walkedNodes = append(walkedNodes, exportObjectWalkedNode(smiEntries, oid, opts)...)
 	}
 
-	if opts.Json {
+	switch {
+	case opts.Json:
 		jsonBytes, _ := json.Marshal(walkedNodes)
 		fmt.Println(string(jsonBytes))
-		return nil
-	} else {
+	case opts.CSV:
+		writer := csv.NewWriter(os.Stdout)
+		defer writer.Flush()
+
+		headers := []string{"OID", "Name", "MIB", "Type", "Value", "Enum", "Unit", "Desc"}
+		err := writer.Write(headers)
+		if err != nil {
+			return err
+		}
+		for _, w := range walkedNodes {
+			r := []string{w.OID, w.Name, w.MIB, w.Type, w.Value, w.Enum, w.Unit, w.Desc}
+			err := writer.Write(r)
+			if err != nil {
+				return err
+			}
+		}
+	default:
 		printWalkedNodesAsText(walkedNodes)
 	}
 
