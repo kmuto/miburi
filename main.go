@@ -50,7 +50,7 @@ type WalkCommand struct {
 	Port      uint16   `arg:"-p,--port" help:"Port to walk" default:"161"`
 	OIDs      []string `arg:"-t,--target,separate,required" help:"OID to walk (multiple supported)"`
 	Verbose   bool     `arg:"-v,--verbose" help:"Verbose output"`
-	Encoding  string   `arg:"-e,--encoding" help:"Encoding to use"`
+	Json      bool     `arg:"-j,--json" help:"Output in JSON"`
 }
 
 type ssagasuOpts struct {
@@ -58,6 +58,17 @@ type ssagasuOpts struct {
 	FindCommand *FindCommand `arg:"subcommand:find" help:"Find MIB object by OID"`
 	WalkCommand *WalkCommand `arg:"subcommand:walk" help:"Walk host by OID"`
 	JsonCommand *JsonCommand `arg:"subcommand:json" help:"Show MIB objects in JSON"`
+}
+
+type WalkedNode struct {
+	OID   string
+	Name  string
+	MIB   string
+	Type  string
+	Value string
+	Enum  string
+	Unit  string
+	Desc  string
 }
 
 var version string
@@ -182,10 +193,108 @@ func walk(opts *WalkCommand) error {
 	}
 	defer gosnmp.Default.Conn.Close()
 
+	if opts.Json {
+		var walkedNodes []WalkedNode
+		for _, oid := range opts.OIDs {
+			walkedNodes = append(walkedNodes, exportObjectWalkedNode(smiEntries, oid, opts)...)
+		}
+		jsonBytes, _ := json.Marshal(walkedNodes)
+		fmt.Println(string(jsonBytes))
+		return nil
+	}
+
 	for _, oid := range opts.OIDs {
 		exportTextWalkedNode(smiEntries, oid, opts)
 	}
 	return nil
+}
+
+func exportObjectWalkedNode(smiEntries []SmiEntry, oid string, opts *WalkCommand) []WalkedNode {
+	var walkedNodes []WalkedNode
+	err := gosnmp.Default.BulkWalk(oid, func(pdu gosnmp.SnmpPDU) error {
+		name, node := find(smiEntries, pdu.Name)
+		walkedNode := WalkedNode{
+			OID:  normalizeOid(pdu.Name),
+			Name: name,
+			MIB:  node.MIB,
+		}
+
+		switch pdu.Type {
+		case gosnmp.OctetString:
+			walkedNode.Type = "OctetString"
+			v := pdu.Value.([]byte)
+			if utf8.Valid(v) {
+				walkedNode.Value = string(v)
+			} else {
+				s := "(hex) "
+				for i, v := range v {
+					if i > 0 {
+						s = s + " "
+					}
+					s = s + fmt.Sprintf("%02x", v)
+				}
+				walkedNode.Value = s
+			}
+		case gosnmp.Integer:
+			walkedNode.Type = "Integer"
+			walkedNode.Value = fmt.Sprintf("%d", gosnmp.ToBigInt(pdu.Value).Int64())
+		case gosnmp.ObjectIdentifier:
+			walkedNode.Type = "ObjectIdentifier"
+			walkedNode.Value = fmt.Sprintf("%s", pdu.Value)
+		case gosnmp.IPAddress:
+			walkedNode.Type = "IPAddress"
+			walkedNode.Value = fmt.Sprintf("%s", pdu.Value)
+		case gosnmp.Counter32:
+			walkedNode.Type = "Counter32"
+			walkedNode.Value = fmt.Sprintf("%d", gosnmp.ToBigInt(pdu.Value).Int64())
+		case gosnmp.Gauge32:
+			walkedNode.Type = "Gauge32"
+			walkedNode.Value = fmt.Sprintf("%d", gosnmp.ToBigInt(pdu.Value).Int64())
+		case gosnmp.TimeTicks:
+			walkedNode.Type = "TimeTicks"
+			walkedNode.Value = fmt.Sprintf("%d", gosnmp.ToBigInt(pdu.Value).Int64())
+		case gosnmp.Counter64:
+			walkedNode.Type = "Counter64"
+			walkedNode.Value = fmt.Sprintf("%d", gosnmp.ToBigInt(pdu.Value).Int64())
+		case gosnmp.Opaque:
+			walkedNode.Type = "Opaque"
+			walkedNode.Value = fmt.Sprintf("%s", pdu.Value)
+		case gosnmp.NoSuchObject:
+			walkedNode.Type = "NoSuchObject"
+			walkedNode.Value = fmt.Sprintf("%s", pdu.Value)
+		case gosnmp.NoSuchInstance:
+			walkedNode.Type = "NoSuchInstance"
+			walkedNode.Value = fmt.Sprintf("%s", pdu.Value)
+		case gosnmp.EndOfMibView:
+			return nil
+		default:
+			walkedNode.Type = "Unknown"
+		}
+
+		if opts.Verbose && name != "" {
+			if node.SmiType != nil {
+				if node.SmiType.Enum != nil {
+					var enums []string
+					for _, e := range node.SmiType.Enum.Values {
+						enums = append(enums, fmt.Sprintf("%s = %v", e.Name, e.Value))
+					}
+					walkedNode.Enum = strings.Join(enums, ", ")
+				}
+				if node.SmiType.Units != "" {
+					walkedNode.Unit = node.SmiType.Units
+				}
+			}
+			walkedNode.Desc = node.Description
+		}
+
+		walkedNodes = append(walkedNodes, walkedNode)
+		return nil
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return nil
+	}
+	return walkedNodes
 }
 
 func exportTextWalkedNode(smiEntries []SmiEntry, oid string, opts *WalkCommand) {
