@@ -96,7 +96,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
-		fmt.Println("Dump completed")
+		fmt.Println(`Dump completed`)
 	case opts.FindCommand != nil:
 		smiEntries, err := makeSmiEntries(opts.FindCommand.Input)
 		if err != nil {
@@ -193,20 +193,38 @@ func walk(opts *WalkCommand) error {
 	}
 	defer gosnmp.Default.Conn.Close()
 
+	var walkedNodes []WalkedNode
+	for _, oid := range opts.OIDs {
+		walkedNodes = append(walkedNodes, exportObjectWalkedNode(smiEntries, oid, opts)...)
+	}
+
 	if opts.Json {
-		var walkedNodes []WalkedNode
-		for _, oid := range opts.OIDs {
-			walkedNodes = append(walkedNodes, exportObjectWalkedNode(smiEntries, oid, opts)...)
-		}
 		jsonBytes, _ := json.Marshal(walkedNodes)
 		fmt.Println(string(jsonBytes))
 		return nil
+	} else {
+		printWalkedNodesAsText(walkedNodes)
 	}
 
-	for _, oid := range opts.OIDs {
-		exportTextWalkedNode(smiEntries, oid, opts)
-	}
 	return nil
+}
+
+func printWalkedNodesAsText(walkedNodes []WalkedNode) {
+	for _, w := range walkedNodes {
+		fmt.Printf("OID: %s\nName: %s\nMIB: %s\nType: %s\nValue: %s\n", w.OID, w.Name, w.MIB, w.Type, w.Value)
+
+		if w.Enum != "" {
+			fmt.Printf("Enum: %s\n", w.Enum)
+		}
+		if w.Unit != "" {
+			fmt.Printf("Unit: %s\n", w.Unit)
+		}
+		if w.Desc != "" {
+			fmt.Printf("Description: ---\n%s\n---\n", w.Desc)
+		}
+
+		fmt.Println()
+	}
 }
 
 func exportObjectWalkedNode(smiEntries []SmiEntry, oid string, opts *WalkCommand) []WalkedNode {
@@ -295,90 +313,6 @@ func exportObjectWalkedNode(smiEntries []SmiEntry, oid string, opts *WalkCommand
 		return nil
 	}
 	return walkedNodes
-}
-
-func exportTextWalkedNode(smiEntries []SmiEntry, oid string, opts *WalkCommand) {
-	err := gosnmp.Default.BulkWalk(oid, func(pdu gosnmp.SnmpPDU) error {
-		name, node := find(smiEntries, pdu.Name)
-		fmt.Printf("OID: %s\nName: %s\nMIB: %s\n", normalizeOid(pdu.Name), name, node.MIB)
-
-		switch pdu.Type {
-		case gosnmp.OctetString:
-			fmt.Printf("Type: OctetString\n")
-			v := pdu.Value.([]byte)
-			if utf8.Valid(v) {
-				fmt.Printf("Value: %s\n", string(v))
-			} else {
-				fmt.Print("Value: (hex) ")
-				for i, v := range v {
-					if i > 0 {
-						fmt.Print(" ")
-					}
-					fmt.Printf("%02x", v)
-				}
-				fmt.Println()
-			}
-			// fmt.Printf("Value: %s\n", string(v))
-		case gosnmp.Integer:
-			fmt.Printf("Type: Integer\n")
-			fmt.Printf("Value: %d\n", gosnmp.ToBigInt(pdu.Value).Int64())
-		case gosnmp.ObjectIdentifier:
-			fmt.Printf("Type: ObjectIdentifier\n")
-			fmt.Printf("Value: %s\n", pdu.Value)
-		case gosnmp.IPAddress:
-			fmt.Printf("Type: IPAddress\n")
-			fmt.Printf("Value: %s\n", pdu.Value)
-		case gosnmp.Counter32:
-			fmt.Printf("Type: Counter32\n")
-			fmt.Printf("Value: %d\n", gosnmp.ToBigInt(pdu.Value).Int64())
-		case gosnmp.Gauge32:
-			fmt.Printf("Type: Gauge32\n")
-			fmt.Printf("Value: %d\n", gosnmp.ToBigInt(pdu.Value).Int64())
-		case gosnmp.TimeTicks:
-			fmt.Printf("Type: TimeTicks\n")
-			fmt.Printf("Value: %d\n", gosnmp.ToBigInt(pdu.Value).Int64())
-		case gosnmp.Counter64:
-			fmt.Printf("Type: Counter64\n")
-			fmt.Printf("Value: %d\n", gosnmp.ToBigInt(pdu.Value).Int64())
-		case gosnmp.Opaque:
-			fmt.Printf("Type: Opaque\n")
-			fmt.Printf("Value: %s\n", pdu.Value)
-		case gosnmp.NoSuchObject:
-			fmt.Printf("Type: NoSuchObject\n")
-			fmt.Printf("Value: %s\n", pdu.Value)
-		case gosnmp.NoSuchInstance:
-			fmt.Printf("Type: NoSuchInstance\n")
-			fmt.Printf("Value: %s\n", pdu.Value)
-		case gosnmp.EndOfMibView:
-			return nil
-		default:
-			fmt.Printf("Type: Unknown\n")
-		}
-
-		if opts.Verbose && name != "" {
-			if node.SmiType != nil {
-				if node.SmiType.Enum != nil {
-					var enums []string
-					for _, e := range node.SmiType.Enum.Values {
-						enums = append(enums, fmt.Sprintf("%s = %v", e.Name, e.Value))
-					}
-					fmt.Printf("Enum: %s\n", strings.Join(enums, ", "))
-				}
-				if node.SmiType.Units != "" {
-					fmt.Printf("Unit: %s\n", node.SmiType.Units)
-				}
-			}
-			fmt.Printf("Description: ---\n%s\n---\n", node.Description)
-		}
-
-		fmt.Println()
-
-		return nil
-	})
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return
-	}
 }
 
 func exportJson(filename string) (string, error) {
