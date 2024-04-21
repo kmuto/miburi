@@ -1,0 +1,35 @@
+---
+name: test
+
+on:
+  push:
+    branches:
+    - main
+    tags:
+    - v*
+  pull_request:
+env:
+  DEBIAN_FRONTEND: noninteractive
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: golangci/golangci-lint-action@v3
+  test:
+    strategy:
+      matrix:
+        go: ["1.21.x", "1.20.x"]
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/setup-go@v4
+      with:
+        go-version: ${{ matrix.go }}
+    - uses: actions/checkout@v4
+    - uses: actions/cache@v3
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+    - run: go test -v ./...
