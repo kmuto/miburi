@@ -26,7 +26,11 @@ archives:
   - format: zip
     # this name template makes the OS and Arch compatible with the results of uname.
     name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
-    # files:
+    files:
+      - README.md
+      - README-ja.md
+      - miburi.png
+      - Dockerfile
 checksum:
   name_template: 'checksums.txt'
 snapshot:
