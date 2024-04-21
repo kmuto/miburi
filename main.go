@@ -8,8 +8,11 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
+	"unicode/utf8"
 
 	"github.com/alexflint/go-arg"
+	"github.com/gosnmp/gosnmp"
 	"github.com/sleepinggenius2/gosmi"
 )
 
@@ -40,9 +43,20 @@ type JsonCommand struct {
 	Input string `arg:"-i,--input" help:"Input file" default:"smi_objects.gob"`
 }
 
+type WalkCommand struct {
+	Input     string   `arg:"-i,--input" help:"Input file" default:"smi_objects.gob"`
+	Host      string   `arg:"-H,--host" help:"Host to walk" default:"localhost"`
+	Community string   `arg:"-c,--community" help:"Community to walk" default:"public"`
+	Port      uint16   `arg:"-p,--port" help:"Port to walk" default:"161"`
+	OIDs      []string `arg:"-t,--target,separate,required" help:"OID to walk (multiple supported)"`
+	Verbose   bool     `arg:"-v,--verbose" help:"Verbose output"`
+	Encoding  string   `arg:"-e,--encoding" help:"Encoding to use"`
+}
+
 type ssagasuOpts struct {
 	DumpCommand *DumpCommand `arg:"subcommand:dump" help:"Dump MIB objects to file"`
 	FindCommand *FindCommand `arg:"subcommand:find" help:"Find MIB object by OID"`
+	WalkCommand *WalkCommand `arg:"subcommand:walk" help:"Walk host by OID"`
 	JsonCommand *JsonCommand `arg:"subcommand:json" help:"Show MIB objects in JSON"`
 }
 
@@ -57,7 +71,7 @@ func (ssagasuOpts) Version() string {
 func main() {
 	opts, err := parseArgs(os.Args[1:])
 	if err != nil {
-		fmt.Println(err)
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 
@@ -68,23 +82,29 @@ func main() {
 	case opts.DumpCommand != nil:
 		err := createDump(opts.DumpCommand.Output, opts.DumpCommand.Directories)
 		if err != nil {
-			fmt.Println(err)
+			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
 		fmt.Println("Dump completed")
 	case opts.FindCommand != nil:
 		smiEntries, err := makeSmiEntries(opts.FindCommand.Input)
 		if err != nil {
-			fmt.Println(err)
+			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
 		for _, oid := range opts.FindCommand.OIDs {
-			exportTextFindedNode(smiEntries, oid, opts.FindCommand.Verbose)
+			exportTextFindedNode(smiEntries, oid, opts.FindCommand)
+		}
+	case opts.WalkCommand != nil:
+		err := walk(opts.WalkCommand)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(0)
 		}
 	case opts.JsonCommand != nil:
 		json, err := exportJson(opts.JsonCommand.Input)
 		if err != nil {
-			fmt.Println(err)
+			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
 		fmt.Println(json)
@@ -95,7 +115,7 @@ func parseArgs(_ []string) (*ssagasuOpts, error) {
 	var opts ssagasuOpts
 	// XXX: MustParse uses args[1:] by default?
 	arg.MustParse(&opts)
-	if opts.DumpCommand == nil && opts.FindCommand == nil && opts.JsonCommand == nil {
+	if opts.DumpCommand == nil && opts.FindCommand == nil && opts.WalkCommand == nil && opts.JsonCommand == nil {
 		return nil, fmt.Errorf("no command specified")
 	}
 	return &opts, nil
@@ -121,14 +141,14 @@ func makeSmiEntries(filename string) ([]SmiEntry, error) {
 	return smiEntries, nil
 }
 
-func exportTextFindedNode(smiEntries []SmiEntry, oid string, verbose bool) {
+func exportTextFindedNode(smiEntries []SmiEntry, oid string, opts *FindCommand) {
 	name, node := find(smiEntries, oid)
 	if name == "" {
-		fmt.Printf("name not found for OID: %s\n", oid)
+		fmt.Fprintf(os.Stderr, "name not found for OID: %s\n", oid)
 		return
 	}
 	fmt.Printf("OID: %s\nName: %s\nMIB: %s\n", oid, name, node.MIB)
-	if verbose {
+	if opts.Verbose {
 		fmt.Printf("Type: %s\n", node.SmiType.Name)
 		if node.SmiType.Enum != nil {
 			var enums []string
@@ -141,6 +161,114 @@ func exportTextFindedNode(smiEntries []SmiEntry, oid string, verbose bool) {
 			fmt.Printf("Unit: %s\n", node.SmiType.Units)
 		}
 		fmt.Printf("Description: ---\n%s\n---\n", node.Description)
+	}
+}
+
+func walk(opts *WalkCommand) error {
+	smiEntries, err := makeSmiEntries(opts.Input)
+	if err != nil {
+		return err
+	}
+
+	gosnmp.Default.Target = opts.Host
+	gosnmp.Default.Community = opts.Community
+	gosnmp.Default.Port = opts.Port
+	gosnmp.Default.Version = gosnmp.Version2c
+	gosnmp.Default.Timeout = time.Duration(10 * time.Second)
+
+	err = gosnmp.Default.Connect()
+	if err != nil {
+		return err
+	}
+	defer gosnmp.Default.Conn.Close()
+
+	for _, oid := range opts.OIDs {
+		exportTextWalkedNode(smiEntries, oid, opts)
+	}
+	return nil
+}
+
+func exportTextWalkedNode(smiEntries []SmiEntry, oid string, opts *WalkCommand) {
+	err := gosnmp.Default.BulkWalk(oid, func(pdu gosnmp.SnmpPDU) error {
+		name, node := find(smiEntries, pdu.Name)
+		fmt.Printf("OID: %s\nName: %s\nMIB: %s\n", normalizeOid(pdu.Name), name, node.MIB)
+
+		switch pdu.Type {
+		case gosnmp.OctetString:
+			fmt.Printf("Type: OctetString\n")
+			v := pdu.Value.([]byte)
+			if utf8.Valid(v) {
+				fmt.Printf("Value: %s\n", string(v))
+			} else {
+				fmt.Print("Value: (hex) ")
+				for i, v := range v {
+					if i > 0 {
+						fmt.Print(" ")
+					}
+					fmt.Printf("%02x", v)
+				}
+				fmt.Println()
+			}
+			// fmt.Printf("Value: %s\n", string(v))
+		case gosnmp.Integer:
+			fmt.Printf("Type: Integer\n")
+			fmt.Printf("Value: %d\n", gosnmp.ToBigInt(pdu.Value).Int64())
+		case gosnmp.ObjectIdentifier:
+			fmt.Printf("Type: ObjectIdentifier\n")
+			fmt.Printf("Value: %s\n", pdu.Value)
+		case gosnmp.IPAddress:
+			fmt.Printf("Type: IPAddress\n")
+			fmt.Printf("Value: %s\n", pdu.Value)
+		case gosnmp.Counter32:
+			fmt.Printf("Type: Counter32\n")
+			fmt.Printf("Value: %d\n", gosnmp.ToBigInt(pdu.Value).Int64())
+		case gosnmp.Gauge32:
+			fmt.Printf("Type: Gauge32\n")
+			fmt.Printf("Value: %d\n", gosnmp.ToBigInt(pdu.Value).Int64())
+		case gosnmp.TimeTicks:
+			fmt.Printf("Type: TimeTicks\n")
+			fmt.Printf("Value: %d\n", gosnmp.ToBigInt(pdu.Value).Int64())
+		case gosnmp.Counter64:
+			fmt.Printf("Type: Counter64\n")
+			fmt.Printf("Value: %d\n", gosnmp.ToBigInt(pdu.Value).Int64())
+		case gosnmp.Opaque:
+			fmt.Printf("Type: Opaque\n")
+			fmt.Printf("Value: %s\n", pdu.Value)
+		case gosnmp.NoSuchObject:
+			fmt.Printf("Type: NoSuchObject\n")
+			fmt.Printf("Value: %s\n", pdu.Value)
+		case gosnmp.NoSuchInstance:
+			fmt.Printf("Type: NoSuchInstance\n")
+			fmt.Printf("Value: %s\n", pdu.Value)
+		case gosnmp.EndOfMibView:
+			return nil
+		default:
+			fmt.Printf("Type: Unknown\n")
+		}
+
+		if opts.Verbose && name != "" {
+			if node.SmiType != nil {
+				if node.SmiType.Enum != nil {
+					var enums []string
+					for _, e := range node.SmiType.Enum.Values {
+						enums = append(enums, fmt.Sprintf("%s = %v", e.Name, e.Value))
+					}
+					fmt.Printf("Enum: %s\n", strings.Join(enums, ", "))
+				}
+				if node.SmiType.Units != "" {
+					fmt.Printf("Unit: %s\n", node.SmiType.Units)
+				}
+			}
+			fmt.Printf("Description: ---\n%s\n---\n", node.Description)
+		}
+
+		fmt.Println()
+
+		return nil
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return
 	}
 }
 
@@ -157,11 +285,17 @@ func exportJson_internal(smiEntries []SmiEntry) string {
 	return string(jsonBytes)
 }
 
+func normalizeOid(oid string) string {
+	re := regexp.MustCompile(`^\.`)
+	oid = re.ReplaceAllString(oid, "")
+	re = regexp.MustCompile(`^iso\.`)
+	oid = re.ReplaceAllString(oid, "1.")
+	return oid
+}
+
 func find(smiEntries []SmiEntry, oid string) (string, SmiNodeWithIndex) {
 	oidMap := makeOidMap(smiEntries)
-	re := regexp.MustCompile(`^iso\.`)
-	oid = re.ReplaceAllString(oid, "1.")
-	oidname, node := findNodeByOID(oidMap, oid)
+	oidname, node := findNodeByOID(oidMap, normalizeOid(oid))
 	return oidname, node
 }
 
