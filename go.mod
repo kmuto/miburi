@@ -1,4 +1,4 @@
-module ssagasu
+module github.com/kmuto/miburi
 
 go 1.22.2
 
