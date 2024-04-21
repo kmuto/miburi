@@ -30,9 +30,9 @@ type DumpCommand struct {
 }
 
 type FindCommand struct {
-	Input   string `arg:"-i,--input" help:"Input file" default:"smi_objects.gob"`
-	OID     string `arg:"-t,--target" help:"OID to find"`
-	Verbose bool   `arg:"-v,--verbose" help:"Verbose output"`
+	Input   string   `arg:"-i,--input" help:"Input file" default:"smi_objects.gob"`
+	OIDs    []string `arg:"-t,--target,separate,required" help:"OID to find (multiple supported)"`
+	Verbose bool     `arg:"-v,--verbose" help:"Verbose output"`
 }
 
 type JsonCommand struct {
@@ -72,18 +72,31 @@ func main() {
 		}
 		fmt.Println("Dump completed")
 	case opts.FindCommand != nil:
-		name, node, err := find(opts.FindCommand.Input, opts.FindCommand.OID)
-		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
-		}
-		if name == "" {
-			fmt.Println("name not found")
-			os.Exit(1)
-		}
-		fmt.Printf("OID: %s\nName: %s\nMIB: %s\n", opts.FindCommand.OID, name, node.MIB)
-		if opts.FindCommand.Verbose {
-			fmt.Printf("%v\n", node)
+		for _, oid := range opts.FindCommand.OIDs {
+			name, node, err := find(opts.FindCommand.Input, oid)
+			if err != nil {
+				fmt.Println(err)
+				os.Exit(1)
+			}
+			if name == "" {
+				fmt.Printf("name not found for OID: %s\n", oid)
+				continue
+			}
+			fmt.Printf("OID: %s\nName: %s\nMIB: %s\n", oid, name, node.MIB)
+			if opts.FindCommand.Verbose {
+				fmt.Printf("Type: %s\n", node.SmiType.Name)
+				if node.SmiType.Enum != nil {
+					var enums []string
+					for _, e := range node.SmiType.Enum.Values {
+						enums = append(enums, fmt.Sprintf("%s = %v", e.Name, e.Value))
+					}
+					fmt.Printf("Enum: %s\n", strings.Join(enums, ", "))
+				}
+				if node.SmiType.Units != "" {
+					fmt.Printf("Unit: %s\n", node.SmiType.Units)
+				}
+				fmt.Printf("Description: ---\n%s\n---\n", node.Description)
+			}
 		}
 	case opts.JsonCommand != nil:
 		json, err := exportJson(opts.JsonCommand.Input)
