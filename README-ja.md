@@ -2,6 +2,8 @@
 
 - [English](README.md)
 
+![](miburi.png)
+
 ## 概要
 
 **Miburi**は、SNMP対応デバイスから情報を取得するためのツールです。MIBファイルをもとに、取得したOIDに対応付けられた情報を表示します。

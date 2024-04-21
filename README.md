@@ -2,6 +2,8 @@
 
 - [日本語](README-ja.md)
 
+![](miburi.png)
+
 ## Description
 
 **Miburi** is a tool for retrieving information from SNMP devices. It imports MIB files and displays information corresponding to the retrieved OID.
