@@ -31,8 +31,9 @@ func walk(opts *WalkCommand) error {
 	defer gosnmp.Default.Conn.Close()
 
 	var walkedNodes []WalkedNode
+	oidMap := makeOidMap(smiEntries)
 	for _, oid := range opts.OIDs {
-		walkedNodes = append(walkedNodes, exportObjectWalkedNode(smiEntries, oid, opts)...)
+		walkedNodes = append(walkedNodes, exportObjectWalkedNode(oidMap, normalizeOid(oid), opts)...)
 	}
 
 	switch {
@@ -80,10 +81,10 @@ func printWalkedNodesAsText(walkedNodes []WalkedNode) {
 	}
 }
 
-func exportObjectWalkedNode(smiEntries []SmiEntry, oid string, opts *WalkCommand) []WalkedNode {
+func exportObjectWalkedNode(oidMap map[string]SmiNodeWithIndex, oid string, opts *WalkCommand) []WalkedNode {
 	var walkedNodes []WalkedNode
 	err := gosnmp.Default.BulkWalk(oid, func(pdu gosnmp.SnmpPDU) error {
-		name, node := find(smiEntries, pdu.Name)
+		name, node := findNodeByOID(oidMap, normalizeOid(pdu.Name))
 		walkedNode := WalkedNode{
 			OID:  normalizeOid(pdu.Name),
 			Name: name,
