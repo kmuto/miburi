@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/alexflint/go-arg"
@@ -72,31 +73,13 @@ func main() {
 		}
 		fmt.Println("Dump completed")
 	case opts.FindCommand != nil:
+		smiEntries, err := makeSmiEntries(opts.FindCommand.Input)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
 		for _, oid := range opts.FindCommand.OIDs {
-			name, node, err := find(opts.FindCommand.Input, oid)
-			if err != nil {
-				fmt.Println(err)
-				os.Exit(1)
-			}
-			if name == "" {
-				fmt.Printf("name not found for OID: %s\n", oid)
-				continue
-			}
-			fmt.Printf("OID: %s\nName: %s\nMIB: %s\n", oid, name, node.MIB)
-			if opts.FindCommand.Verbose {
-				fmt.Printf("Type: %s\n", node.SmiType.Name)
-				if node.SmiType.Enum != nil {
-					var enums []string
-					for _, e := range node.SmiType.Enum.Values {
-						enums = append(enums, fmt.Sprintf("%s = %v", e.Name, e.Value))
-					}
-					fmt.Printf("Enum: %s\n", strings.Join(enums, ", "))
-				}
-				if node.SmiType.Units != "" {
-					fmt.Printf("Unit: %s\n", node.SmiType.Units)
-				}
-				fmt.Printf("Description: ---\n%s\n---\n", node.Description)
-			}
+			exportTextFindedNode(smiEntries, oid, opts.FindCommand.Verbose)
 		}
 	case opts.JsonCommand != nil:
 		json, err := exportJson(opts.JsonCommand.Input)
@@ -106,15 +89,11 @@ func main() {
 		}
 		fmt.Println(json)
 	}
-	/*
-		target := "1.3.6.1.2.1.10.127.1.1.1.1.7.3.1"
-		target = "1.3.6.1.6.3.16.1.5.2.1.6.6.95.110.111.110.101.95.1.2"
-		target = "1.3.6.1.2.1.31.1.1.1.12.43"
-	*/
 }
 
-func parseArgs(args []string) (*ssagasuOpts, error) {
+func parseArgs(_ []string) (*ssagasuOpts, error) {
 	var opts ssagasuOpts
+	// XXX: MustParse uses args[1:] by default?
 	arg.MustParse(&opts)
 	if opts.DumpCommand == nil && opts.FindCommand == nil && opts.JsonCommand == nil {
 		return nil, fmt.Errorf("no command specified")
@@ -134,14 +113,35 @@ func createDump(filename string, paths []string) error {
 	return nil
 }
 
-func find(filename string, oid string) (string, SmiNodeWithIndex, error) {
+func makeSmiEntries(filename string) ([]SmiEntry, error) {
 	smiEntries, err := restoreObject(filename)
 	if err != nil {
-		return "", SmiNodeWithIndex{}, err
+		return nil, err
 	}
-	oidMap := makeOidMap(smiEntries)
-	oid, node := findNodeByOID(oidMap, oid)
-	return oid, node, nil
+	return smiEntries, nil
+}
+
+func exportTextFindedNode(smiEntries []SmiEntry, oid string, verbose bool) {
+	name, node := find(smiEntries, oid)
+	if name == "" {
+		fmt.Printf("name not found for OID: %s\n", oid)
+		return
+	}
+	fmt.Printf("OID: %s\nName: %s\nMIB: %s\n", oid, name, node.MIB)
+	if verbose {
+		fmt.Printf("Type: %s\n", node.SmiType.Name)
+		if node.SmiType.Enum != nil {
+			var enums []string
+			for _, e := range node.SmiType.Enum.Values {
+				enums = append(enums, fmt.Sprintf("%s = %v", e.Name, e.Value))
+			}
+			fmt.Printf("Enum: %s\n", strings.Join(enums, ", "))
+		}
+		if node.SmiType.Units != "" {
+			fmt.Printf("Unit: %s\n", node.SmiType.Units)
+		}
+		fmt.Printf("Description: ---\n%s\n---\n", node.Description)
+	}
 }
 
 func exportJson(filename string) (string, error) {
@@ -155,6 +155,14 @@ func exportJson(filename string) (string, error) {
 func exportJson_internal(smiEntries []SmiEntry) string {
 	jsonBytes, _ := json.Marshal(smiEntries)
 	return string(jsonBytes)
+}
+
+func find(smiEntries []SmiEntry, oid string) (string, SmiNodeWithIndex) {
+	oidMap := makeOidMap(smiEntries)
+	re := regexp.MustCompile(`^iso\.`)
+	oid = re.ReplaceAllString(oid, "1.")
+	oidname, node := findNodeByOID(oidMap, oid)
+	return oidname, node
 }
 
 func findNodeByOID(oidMap map[string]SmiNodeWithIndex, oid string) (string, SmiNodeWithIndex) {
