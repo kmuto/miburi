@@ -9,6 +9,13 @@ import (
 	"github.com/sleepinggenius2/gosmi"
 )
 
+const DBVersion = 1
+
+type DBObject struct {
+	Version    int
+	SmiEntries []SmiEntry
+}
+
 func createDump(filename string, paths []string) error {
 	smiEntries, err := loadModules(paths)
 	if err != nil {
@@ -21,10 +28,12 @@ func createDump(filename string, paths []string) error {
 	return nil
 }
 
-func dumpObject(fileName string, snmpEntries []SmiEntry) error {
+func dumpObject(fileName string, smiEntries []SmiEntry) error {
 	var b bytes.Buffer
 	enc := gob.NewEncoder(&b)
-	err := enc.Encode(snmpEntries)
+	err := enc.Encode(&DBObject{
+		Version:    DBVersion,
+		SmiEntries: smiEntries})
 	if err != nil {
 		return err
 	}
@@ -38,19 +47,22 @@ func dumpObject(fileName string, snmpEntries []SmiEntry) error {
 }
 
 func restoreObject(filename string) ([]SmiEntry, error) {
-	var smiEntries []SmiEntry
+	var dbObject DBObject
 	data, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
 
 	dec := gob.NewDecoder(bytes.NewReader(data))
-	err = dec.Decode(&smiEntries)
+	err = dec.Decode(&dbObject)
 	if err != nil {
 		return nil, err
 	}
+	if dbObject.Version != DBVersion {
+		return nil, fmt.Errorf("%s is incompatible with this miburi. Please recreate it (see `miburi dump --help`)", filename)
+	}
 
-	return smiEntries, nil
+	return dbObject.SmiEntries, nil
 }
 
 func loadModules(paths []string) ([]SmiEntry, error) {
