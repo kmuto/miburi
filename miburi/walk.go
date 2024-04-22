@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 	"unicode/utf8"
 
 	"github.com/gosnmp/gosnmp"
@@ -22,7 +21,7 @@ func walk(opts *WalkCommand) error {
 	gosnmp.Default.Community = opts.Community
 	gosnmp.Default.Port = opts.Port
 	gosnmp.Default.Version = gosnmp.Version2c
-	gosnmp.Default.Timeout = time.Duration(10 * time.Second)
+	gosnmp.Default.Retries = 0
 
 	err = gosnmp.Default.Connect()
 	if err != nil {
