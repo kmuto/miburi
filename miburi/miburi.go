@@ -127,10 +127,10 @@ func parseArgs(_ []string) (*miburiOpts, error) {
 }
 
 func normalizeOid(oid string) string {
-	re := regexp.MustCompile(`^\.`)
-	oid = re.ReplaceAllString(oid, "")
-	re = regexp.MustCompile(`^iso\.`)
-	oid = re.ReplaceAllString(oid, "1.")
+	re := regexp.MustCompile(`^iso\.`)
+	oid = re.ReplaceAllString(oid, ".1.")
+	re = regexp.MustCompile(`^([^\.])`) // add dot to the beginning for forcing absolute OID
+	oid = re.ReplaceAllString(oid, ".$1")
 	return oid
 }
 
