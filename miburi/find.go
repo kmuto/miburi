@@ -51,17 +51,19 @@ func exportTextFindedNode(smiEntries []SmiEntry, oid string, opts *FindCommand) 
 	}
 	fmt.Printf("OID: %s\nName: %s\nMIB: %s\n", oid, name, node.MIB)
 	if opts.Verbose {
-		fmt.Printf("Type: %s\n", node.SmiType.Name)
-		if node.SmiType.Enum != nil {
-			var enums []string
-			for _, e := range node.SmiType.Enum.Values {
-				enums = append(enums, fmt.Sprintf("%s = %v", e.Name, e.Value))
+		if node.SmiType != nil {
+			fmt.Printf("Type: %s\n", node.SmiType.Name)
+			if node.SmiType.Enum != nil {
+				var enums []string
+				for _, e := range node.SmiType.Enum.Values {
+					enums = append(enums, fmt.Sprintf("%s = %v", e.Name, e.Value))
+				}
+				fmt.Printf("Enum: %s\n", strings.Join(enums, ", "))
 			}
-			fmt.Printf("Enum: %s\n", strings.Join(enums, ", "))
+			if node.SmiType.Units != "" {
+				fmt.Printf("Unit: %s\n", node.SmiType.Units)
+			}
+			fmt.Printf("Description: ---\n%s\n---\n", node.Description)
 		}
-		if node.SmiType.Units != "" {
-			fmt.Printf("Unit: %s\n", node.SmiType.Units)
-		}
-		fmt.Printf("Description: ---\n%s\n---\n", node.Description)
 	}
 }
