@@ -225,7 +225,7 @@ $ docker container run --rm -v ".:/work" kmuto/mib
 `mibs` ディレクトリが作成され、MIBファイルが格納されています。これで以下を実行できます:
 
 ```
-$ miburi dump -d mibs
+$ miburi dump -d mibs -d mibs/iana -d mibs/ietf
 ```
 
 ## ライセンス
