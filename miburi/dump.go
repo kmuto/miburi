@@ -99,7 +99,7 @@ func loadModules(paths []string) ([]SmiEntry, error) {
 		for _, node := range sminodes {
 			nodes = append(nodes, SmiNodeWithIndex{
 				SmiNode:   node,
-				OIDString: node.Oid.String(),
+				OIDString: "." + node.Oid.String(),
 				MIB:       m.Name,
 			})
 		}

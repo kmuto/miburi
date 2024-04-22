@@ -49,7 +49,7 @@ func exportTextFindedNode(smiEntries []SmiEntry, oid string, opts *FindCommand) 
 		fmt.Fprintf(os.Stderr, "name not found for OID: %s\n", oid)
 		return
 	}
-	fmt.Printf("OID: %s\nName: %s\nMIB: %s\n", oid, name, node.MIB)
+	fmt.Printf("OID: %s\nName: %s\nMIB: %s\n", normalizeOid(oid), name, node.MIB)
 	if opts.Verbose {
 		if node.SmiType != nil {
 			fmt.Printf("Type: %s\n", node.SmiType.Name)
