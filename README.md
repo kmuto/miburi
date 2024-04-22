@@ -225,7 +225,7 @@ $ docker container run --rm -v ".:/work" kmuto/mib
 `mibs` directory will be created and have MIB files. Then do:
 
 ```
-$ miburi dump -d mibs
+$ miburi dump -d mibs -d mibs/iana -d mibs/ietf
 ```
 
 ## License
