@@ -11,4 +11,4 @@ RUN sed -i -e "s/Components: main/& non-free/" /etc/apt/sources.list.d/debian.so
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-CMD ["bash", "-c", "mkdir -p /work/mibs && cp /usr/share/snmp/mibs/*MIB* /work/mibs && cp -r /var/lib/mibs/* /work/mibs"]
+CMD ["bash", "-c", "mkdir -p /work/mibs && cp /usr/share/snmp/mibs/*.txt /work/mibs && cp -r /var/lib/mibs/* /work/mibs"]

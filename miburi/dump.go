@@ -5,7 +5,6 @@ import (
 	"encoding/gob"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/sleepinggenius2/gosmi"
 )
@@ -113,7 +112,7 @@ func getMIBNames(paths []string) ([]string, error) {
 			return nil, err
 		}
 		for _, file := range files {
-			if !file.IsDir() && strings.Contains(file.Name(), "MIB") {
+			if !file.IsDir() {
 				mibs = append(mibs, file.Name())
 			}
 		}
