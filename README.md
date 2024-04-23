@@ -68,8 +68,8 @@ Options:
 
 Example:
 ```
-$ miburi find -t 1.3.6.1.2.1.1.4.0 -t iso.3.6.1.2.1.2.2.1.10.2 -v
-OID: 1.3.6.1.2.1.1.4.0
+$ miburi find -t .1.3.6.1.2.1.1.4.0 -t iso.3.6.1.2.1.2.2.1.10.2 -v
+OID: .1.3.6.1.2.1.1.4.0
 Name: sysContact.0
 MIB: SNMPv2-MIB
 Type: DisplayString
@@ -116,24 +116,23 @@ Options:
 
 Runs snmpwalk on SNMP-enabled devices. Only SNMP v2c is supported.
 
-The first `1.3.6` is at least required for the OID you specify.
+The first `.1.3` is at least required for the OID you specify.
 
 ```
-$ miburi walk -H localhost -c public --target 1.3.6.1 -v
-OID: 1.3.6.1.2.1.1.1.0
+$ miburi walk -H localhost -c public --target .1.3.6.1 -v
+OID: .1.3.6.1.2.1.1.1.0
 Name: sysDescr.0
 MIB: SNMPv2-MIB
 Type: OctetString
-Value: Linux elemental 6.1.0-20-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.1.85-1 (20
-24-04-11) x86_64
+Value: Linux ...
 
-OID: 1.3.6.1.2.1.1.2.0
+OID: .1.3.6.1.2.1.1.2.0
 Name: sysObjectID.0
 MIB: SNMPv2-MIB
 Type: ObjectIdentifier
 Value: .1.3.6.1.4.1.8072.3.2.10
 
-OID: 1.3.6.1.2.1.1.3.0
+OID: .1.3.6.1.2.1.1.3.0
 Name: sysUpTimeInstance
 MIB: DISMAN-EXPRESSION-MIB
 Type: TimeTicks
@@ -146,32 +145,31 @@ An octetstring is converted to a string value; if it does not become a UTF-8 cha
 You can also output the data in JSON or CSV.
 
 ```
-$ miburi walk -H localhost -c public --target 1.3.6.1 -v -j | jq
+$ miburi walk -H localhost -c public --target .1.3.6.1 -v -j | jq
 [
   {
-    "OID": "1.3.6.1.2.1.1.1.0",
+    "OID": ".1.3.6.1.2.1.1.1.0",
     "Name": "sysDescr.0",
     "MIB": "SNMPv2-MIB",
     "Type": "OctetString",
-    "Value": "Linux elemental 6.1.0-20-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.1.8
-5-1 (2024-04-11) x86_64",
+    "Value": "Linux ...",
     "Enum": "",
     "Unit": "",
     "Desc": ""
   },
   {
-    "OID": "1.3.6.1.2.1.1.2.0",
+    "OID": ".1.3.6.1.2.1.1.2.0",
   ...
 ```
 
 ```
-$ miburi walk -H localhost -c public --target 1.3.6.1 -v -C > localhost.csv
+$ miburi walk -H localhost -c public --target .1.3.6.1 -v -C > localhost.csv
 $ cat localhost.csv
 OID,Name,MIB,Type,Value,Enum,Unit,Desc
-1.3.6.1.2.1.1.1.0,sysDescr.0,SNMPv2-MIB,OctetString,Linux ...
+.1.3.6.1.2.1.1.1.0,sysDescr.0,SNMPv2-MIB,OctetString,Linux ...
 64 #1 SMP PREEMPT_DYNAMIC Debian 6...
-1.3.6.1.2.1.1.2.0,sysObjectID.0,SNMPv2-MIB,ObjectIdentifier,.1.3.6.1.4.1.8072.3.2.10,,,
-1.3.6.1.2.1.1.3.0,sysUpTimeInstance,DISMAN-EXPRESSION-MIB,TimeTicks,1504062,,,
+.1.3.6.1.2.1.1.2.0,sysObjectID.0,SNMPv2-MIB,ObjectIdentifier,.1.3.6.1.4.1.8072.3.2.10,,,
+.1.3.6.1.2.1.1.3.0,sysUpTimeInstance,DISMAN-EXPRESSION-MIB,TimeTicks,1504062,,,
   ...
 ```
 
